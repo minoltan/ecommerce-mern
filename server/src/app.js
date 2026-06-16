@@ -1,6 +1,8 @@
 const express = require('express');
 const cors = require('cors');
 const morgan = require('morgan');
+const swaggerUi = require('swagger-ui-express');
+const swaggerSpec = require('./shared/config/swagger');
 const { connect } = require('./shared/config/db');
 const env = require('./shared/config/env');
 const errorMiddleware = require('./shared/middleware/error.middleware');
@@ -27,6 +29,7 @@ app.use(morgan('dev'));
 app.use(express.json());
 
 app.get('/health', (req, res) => res.json({ status: 'ok', env: env.NODE_ENV }));
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, { explorer: true }));
 
 app.use('/api/v1/users', userRoutes);
 app.use('/api/v1/products', productRoutes);
