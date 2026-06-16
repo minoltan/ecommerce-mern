@@ -1,0 +1,16 @@
+module.exports = {
+  USER_REGISTERED: 'UserRegistered',
+  USER_LOGGED_IN: 'UserLoggedIn',
+  PRODUCT_CREATED: 'ProductCreated',
+  PRICE_UPDATED: 'PriceUpdated',
+  CART_CHECKED_OUT: 'CartCheckedOut',
+  ORDER_PLACED: 'OrderPlaced',
+  ORDER_CANCELLED: 'OrderCancelled',
+  ORDER_FULFILLED: 'OrderFulfilled',
+  PAYMENT_AUTHORISED: 'PaymentAuthorised',
+  PAYMENT_FAILED: 'PaymentFailed',
+  REFUND_ISSUED: 'RefundIssued',
+  STOCK_RESERVED: 'StockReserved',
+  STOCK_RELEASED: 'StockReleased',
+  LOW_STOCK_ALERT: 'LowStockAlert',
+};
