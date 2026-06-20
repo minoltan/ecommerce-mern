@@ -14,7 +14,7 @@ on extraction to microservices is the transport (`EventEmitter` → Kafka topic)
 | `OrderPlaced` | Order | Inventory, Notification |
 | `StockReserved` | Inventory | Order, Payment |
 | `PaymentAuthorised` | Payment | Order, Inventory, Notification |
-| `PaymentFailed` | Payment | Order, Notification |
+| `PaymentFailed` | Payment | Order, Inventory, Notification |
 | `OrderCancelled` | Inventory (reservation failure) or Order (`cancel` API) | Order, Inventory |
 
 ## Sequence Diagram
@@ -70,15 +70,17 @@ sequenceDiagram
                 Notification->>Notification: create payment-success email
             end
         else payment failed
-            Payment->>Bus: publish PaymentFailed {paymentId, orderId, userId}
+            Payment->>Bus: publish PaymentFailed {paymentId, orderId, userId, items}
             par PaymentFailed fan-out
                 Bus->>Order: PaymentFailed
                 Order->>Order: transition → PAYMENT_FAILED
             and
+                Bus->>Inventory: PaymentFailed
+                Inventory->>Inventory: release(items)
+            and
                 Bus->>Notification: PaymentFailed
                 Notification->>Notification: create payment-failed email
             end
-            Note over Inventory: No compensating release fires here —<br/>see Known Gaps #1.
         end
     else stock unavailable
         Inventory->>Bus: publish OrderCancelled {orderId, userId, items, reason}
@@ -96,22 +98,21 @@ sequenceDiagram
 ## Known Gaps / Open Questions
 
 These were found while tracing the actual handlers, not the happy-path description in the
-README. Flagging rather than fixing, per architecture-before-code discipline:
+README. Flagging rather than fixing, per architecture-before-code discipline, except where noted:
 
-1. **No compensation on `PaymentFailed`.** Inventory only releases reserved stock on
-   `OrderCancelled`. Payment failure transitions the order to `PAYMENT_FAILED` but never
-   re-publishes `OrderCancelled`, so reserved stock stays locked indefinitely.
-2. **`OrderCancelled` handler is shared by two unrelated triggers.** Inventory's
+1. **`OrderCancelled` handler is shared by two unrelated triggers.** Inventory's
    reservation-failure path publishes `OrderCancelled` and then its *own* subscriber calls
    `release(items)` on stock that was never successfully reserved (since `reserve()` threw).
    This is indistinguishable from the user-initiated `Order.cancel()` path, which legitimately
    needs a release. Risk of crediting phantom stock back.
-3. **Stock commit on `PaymentAuthorised` is a stub.** `inventory.events.js` only logs
+2. **Stock commit on `PaymentAuthorised` is a stub.** `inventory.events.js` only logs
    `Committing stock for order ${orderId}` — the reserved quantity is never actually deducted
    from the product's stock record.
-4. **No durability.** Events live only in the in-process `EventEmitter`. A process crash
+3. **No durability.** Events live only in the in-process `EventEmitter`. A process crash
    mid-saga silently drops in-flight events with no retry or replay — contrast with Phase 1,
    where Kafka consumer offsets allow redelivery.
 
-These map directly to Session 10 (Testing) candidates: write a saga integration test that
-forces a `PaymentFailed` and assert on inventory state, which would surface gap #1 immediately.
+~~No compensation on `PaymentFailed`~~ — fixed: `payment.service.js` now threads `items`
+through from the `StockReserved` payload into the `PaymentFailed` payload, and
+`inventory.events.js` subscribes to `PaymentFailed` to release reserved stock. Covered by
+`server/src/__tests__/sagas/checkout-saga.test.js`.

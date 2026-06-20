@@ -4,7 +4,7 @@ const eventBus = require('../../shared/events/eventBus');
 const EVENTS = require('../../shared/events/events');
 const AppError = require('../../shared/utils/AppError');
 
-const initiate = async ({ orderId, userId, amount, idempotencyKey }) => {
+const initiate = async ({ orderId, userId, items, amount, idempotencyKey }) => {
   const existing = await Payment.findOne({ idempotencyKey });
   if (existing) return existing;
 
@@ -38,6 +38,7 @@ const initiate = async ({ orderId, userId, amount, idempotencyKey }) => {
       paymentId: payment._id.toString(),
       orderId,
       userId,
+      items,
     });
   }
 

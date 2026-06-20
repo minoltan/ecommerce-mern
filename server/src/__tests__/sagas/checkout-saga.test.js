@@ -38,12 +38,7 @@ beforeEach(async () => {
 });
 
 describe('checkout saga — PaymentFailed branch', () => {
-  // Known gap #1 in docs/hld/checkout-saga-flow.md: inventory.events.js has
-  // no PaymentFailed subscriber, so stock reserved earlier in the saga is
-  // never released back when payment fails. test.failing documents the
-  // desired behaviour and will flip to a failure (telling us to drop
-  // `.failing`) once a PaymentFailed → release subscriber is added.
-  test.failing('releases reserved stock when payment fails', async () => {
+  it('releases reserved stock when payment fails', async () => {
     const productId = new Types.ObjectId();
     await Inventory.create({ productId, quantity: 10, reserved: 0 });
 
@@ -65,6 +60,7 @@ describe('checkout saga — PaymentFailed branch', () => {
       paymentId: new Types.ObjectId().toString(),
       orderId: order._id.toString(),
       userId: order.userId.toString(),
+      items: order.items,
     });
 
     await flush();

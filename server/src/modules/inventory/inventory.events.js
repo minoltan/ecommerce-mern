@@ -16,6 +16,10 @@ const registerHandlers = () => {
     if (items?.length) await inventoryService.release(items);
   });
 
+  eventBus.subscribe(EVENTS.PAYMENT_FAILED, async ({ items }) => {
+    if (items?.length) await inventoryService.release(items);
+  });
+
   eventBus.subscribe(EVENTS.PAYMENT_AUTHORISED, async ({ orderId }) => {
     // Commit reserved stock (deduct from quantity) when payment succeeds.
     // orderId is available here; in production, fetch order items from DB.
