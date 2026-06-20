@@ -29,6 +29,7 @@ const initiate = async ({ orderId, userId, items, amount, idempotencyKey }) => {
       orderId,
       userId,
       amount,
+      items,
     });
   } else {
     payment.status = 'FAILED';

@@ -72,3 +72,80 @@ describe('checkout saga — PaymentFailed branch', () => {
     expect(inv.reserved).toBe(0);
   });
 });
+
+describe('checkout saga — reservation failure branch', () => {
+  it('does not over-release stock when one item in a multi-item order is insufficient', async () => {
+    const productA = new Types.ObjectId();
+    const productB = new Types.ObjectId();
+
+    await Inventory.create({ productId: productA, quantity: 10, reserved: 0 });
+    await Inventory.create({ productId: productB, quantity: 2, reserved: 0 }); // only 2 available
+
+    const items = [
+      { productId: productA, name: 'Widget A', price: 9.99, quantity: 3 }, // reservable
+      { productId: productB, name: 'Widget B', price: 4.99, quantity: 5 }, // insufficient stock
+    ];
+
+    const order = await Order.create({
+      userId: new Types.ObjectId(),
+      items,
+      totalAmount: 3 * 9.99 + 5 * 4.99,
+      status: 'PENDING',
+    });
+
+    // Order module publishes OrderPlaced — simulated directly, same as the
+    // PaymentFailed test above, to isolate inventory's choreography.
+    eventBus.publish(EVENTS.ORDER_PLACED, {
+      orderId: order._id.toString(),
+      userId: order.userId.toString(),
+      items,
+      totalAmount: order.totalAmount,
+    });
+
+    await flush();
+
+    const updatedOrder = await Order.findById(order._id);
+    expect(updatedOrder.status).toBe('CANCELLED');
+
+    const invA = await Inventory.findOne({ productId: productA });
+    const invB = await Inventory.findOne({ productId: productB });
+
+    // Product A was reserved, then rolled back when product B failed — must
+    // return to its pre-attempt baseline, not stay reserved.
+    expect(invA.reserved).toBe(0);
+    // Product B was never reserved at all — must not go negative from a
+    // phantom release of stock it never held.
+    expect(invB.reserved).toBe(0);
+  });
+});
+
+describe('checkout saga — PaymentAuthorised branch', () => {
+  it('commits reserved stock (deducts quantity) when payment succeeds', async () => {
+    const productId = new Types.ObjectId();
+    await Inventory.create({ productId, quantity: 10, reserved: 3 });
+
+    const order = await Order.create({
+      userId: new Types.ObjectId(),
+      items: [{ productId, name: 'Widget', price: 9.99, quantity: 3 }],
+      totalAmount: 29.97,
+      status: 'CONFIRMED',
+    });
+
+    eventBus.publish(EVENTS.PAYMENT_AUTHORISED, {
+      paymentId: new Types.ObjectId().toString(),
+      orderId: order._id.toString(),
+      userId: order.userId.toString(),
+      amount: order.totalAmount,
+      items: order.items,
+    });
+
+    await flush();
+
+    const updatedOrder = await Order.findById(order._id);
+    expect(updatedOrder.status).toBe('PROCESSING');
+
+    const inv = await Inventory.findOne({ productId });
+    expect(inv.quantity).toBe(7); // 10 - 3 deducted from stock on sale
+    expect(inv.reserved).toBe(0); // reservation hold cleared
+  });
+});

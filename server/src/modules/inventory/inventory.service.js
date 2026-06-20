@@ -4,24 +4,34 @@ const EVENTS = require('../../shared/events/events');
 const AppError = require('../../shared/utils/AppError');
 
 const reserve = async (items) => {
-  for (const item of items) {
-    const inv = await Inventory.findOne({ productId: item.productId });
-    if (!inv) throw new AppError(`No inventory for product ${item.productId}`, 404);
+  const reservedSoFar = [];
+  try {
+    for (const item of items) {
+      const inv = await Inventory.findOne({ productId: item.productId });
+      if (!inv) throw new AppError(`No inventory for product ${item.productId}`, 404);
 
-    const available = inv.quantity - inv.reserved;
-    if (available < item.quantity) {
-      throw new AppError(`Insufficient stock for product ${item.productId}`, 400);
+      const available = inv.quantity - inv.reserved;
+      if (available < item.quantity) {
+        throw new AppError(`Insufficient stock for product ${item.productId}`, 400);
+      }
+
+      inv.reserved += item.quantity;
+      await inv.save();
+      reservedSoFar.push(item);
+
+      if (inv.quantity - inv.reserved <= inv.lowStockThreshold) {
+        eventBus.publish(EVENTS.LOW_STOCK_ALERT, {
+          productId: item.productId,
+          available: inv.quantity - inv.reserved,
+        });
+      }
     }
-
-    inv.reserved += item.quantity;
-    await inv.save();
-
-    if (inv.quantity - inv.reserved <= inv.lowStockThreshold) {
-      eventBus.publish(EVENTS.LOW_STOCK_ALERT, {
-        productId: item.productId,
-        available: inv.quantity - inv.reserved,
-      });
-    }
+  } catch (err) {
+    // Roll back whatever this call already reserved so a partial failure on
+    // item N of an order never leaves items 1..N-1 reserved with nothing to
+    // account for them.
+    if (reservedSoFar.length) await release(reservedSoFar);
+    throw err;
   }
 };
 
