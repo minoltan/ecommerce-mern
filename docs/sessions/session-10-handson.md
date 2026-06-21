@@ -1,197 +1,395 @@
-# Session 10 — Hands-On: Auditing & Hardening the Checkout Saga
+# Session 10 — Hands-On: Testing the Modules
 
-This is a companion to the Session 10 lecture plan in `CURRICULUM.md`. Instead of writing
-tests for code you just wrote, this lab walks through something closer to real production
-work: **auditing code someone else (or past-you) wrote**, proving what's actually wrong with
-a failing test, fixing it, and keeping the docs honest. Every step below is a real commit in
-this repo's history — you can `git show <hash>` any of them to see the literal diff.
+This is a companion to the Session 10 lecture plan in `CURRICULUM.md`. Like every session
+before it, you're writing real code from a blank slate — this time, tests. By the end, six
+modules that currently have zero test coverage (`product`, `cart`, `order`, `payment`,
+`inventory`, `notification`) will have real ones, written by you.
 
 ## Before You Start
 
-- Sessions 1–9 done: all seven modules scaffolded, `npm test` passing for the `user` module.
-- `docs/hld/`, `docs/lld/`, `docs/adr/` exist as empty folders (check: `ls docs/hld docs/lld
-  docs/adr` — nothing there yet at the start of this session).
-- Run `npm test` from `server/` once now so you have a baseline.
+- Sessions 1–9 done: all seven modules scaffolded.
+- Confirm the baseline: `cd server && npm test` → 1 suite, 7 tests, all in the `user` module.
+- Open `server/src/modules/user/__tests__/user.service.test.js` side by side with this guide —
+  every pattern below builds directly on it.
 
-## Step 1 — Don't trust the README, trace the actual handlers
+## Step 1 — Worked example: test the Product service from scratch
 
-**What we did:** Before drawing anything, we read every `*.events.js` file
-(`order/order.events.js`, `inventory/inventory.events.js`, `payment/payment.events.js`,
-`notification/notification.events.js`) and `payment.service.js`, `order.service.js`,
-`inventory.service.js` line by line, instead of copying the simplified event-flow diagram out
-of `README.md`.
+We're starting with `product` because it's the simplest CRUD module with no event-bus
+fan-out to other modules to worry about yet — one repetition of the `user` pattern before
+the harder cases.
 
-**Why:** A README is aspirational — it describes intent. The handlers are what actually runs.
-On a real team, the gap between the two is exactly where production incidents hide. Architecture
-docs that are wrong are worse than no docs, because people trust them.
+Create `server/src/modules/product/__tests__/product.service.test.js`.
 
-**Try it yourself:** Open `server/src/modules/inventory/inventory.events.js` right now and
-list every event it subscribes to. Compare that list against the "Event Flow (checkout saga)"
-diagram in `README.md`. You'll find the README is missing `PaymentFailed` and `PaymentAuthorised`
-as inventory triggers entirely — that's the discrepancy this session starts from.
-
-## Step 2 — Draw what the code actually does
-
-**What we did:** Wrote `docs/hld/checkout-saga-flow.md` — a Mermaid `sequenceDiagram` of the
-real choreography, including an Event Catalog table (`event → publisher → subscribers`),
-built directly from Step 1's notes, not the README.
-
-**Why:** Diagram-first communication means the diagram is a tool for *finding* problems, not
-just explaining a finished design. Drawing the real fan-out (`par` blocks for events with
-multiple subscribers, `alt` blocks for the success/failure branches) is what surfaced every gap
-fixed in this session — we found them by trying to draw the failure branches accurately and
-realizing the arrows didn't add up.
-
-**Reproduce it:** `git show 612c72a -- docs/hld/checkout-saga-flow.md`
-
-**Try it yourself:** Pick any Mermaid live editor (or VS Code's Mermaid preview) and paste in
-the diagram. Trace the `PaymentFailed` branch with your finger. Before this session, the
-`Inventory` participant had no arrow on that branch at all — ask yourself: *if payment fails,
-what happens to the stock we reserved?* That question is gap #1.
-
-## Step 3 — Write the ADR for the decision already made
-
-**What we did:** Wrote `docs/adr/ADR-0001-modular-monolith-over-microservices.md`, contrasting
-this repo's modular-monolith choice against Phase 1's `ADR-0006-microservices-vs-monolith.md`
-in `ecommerce-platform`.
-
-**Why:** The decision (modular monolith) was already made back in Session 1 — this ADR doesn't
-change anything, it makes the *reasoning* durable. Six months from now, "why didn't we just use
-microservices like Phase 1?" should have a written answer instead of relying on someone's memory.
-Context → Decision → Consequences (positive AND negative) → Alternatives Rejected is the same
-four-part format used across every ADR in `ecommerce-platform/docs/adr/`.
-
-**Reproduce it:** `git show 612c72a -- docs/adr/ADR-0001-modular-monolith-over-microservices.md`
-
-## Step 4 — Prove a gap exists with a test *before* fixing it
-
-This is the step most students skip, and it's the most important one.
-
-**What we did:** Wrote `server/src/__tests__/sagas/checkout-saga.test.js` asserting the
-*desired* behavior — "reserved stock returns to 0 when payment fails" — and ran it against the
-unfixed code. It failed, exactly as expected, because no code existed yet to release stock on
-`PaymentFailed`. We wrapped it in Jest's `test.failing(...)` instead of a plain `it(...)`:
+**1a. Boilerplate.** Copy the exact `beforeAll`/`afterAll`/`beforeEach` shape from
+`user.service.test.js` — `MongoMemoryServer`, connect, disconnect+stop, clear the collection.
+Swap `User` for `Product`:
 
 ```js
-test.failing('releases reserved stock when payment fails', async () => {
-  // ...arrange a reserved order...
-  eventBus.publish(EVENTS.PAYMENT_FAILED, { /* ... */ });
-  await flush();
-  expect(inv.reserved).toBe(0); // fails today — that's the point
+const mongoose = require('mongoose');
+const { MongoMemoryServer } = require('mongodb-memory-server');
+const eventBus = require('../../../shared/events/eventBus');
+const EVENTS = require('../../../shared/events/events');
+const productService = require('../product.service');
+const Product = require('../product.model');
+
+let mongod;
+
+beforeAll(async () => {
+  mongod = await MongoMemoryServer.create();
+  await mongoose.connect(mongod.getUri());
+});
+
+afterAll(async () => {
+  await mongoose.disconnect();
+  await mongod.stop();
+});
+
+beforeEach(async () => {
+  await Product.deleteMany({});
 });
 ```
 
-**Why `test.failing` instead of just leaving a normal test red:** A normal failing test left in
-the suite either blocks CI for everyone or gets skipped and forgotten. `test.failing` flips the
-report: Jest shows it as **passing** as long as the test body fails internally — which means
-"yes, this documented gap still exists." If someone fixes the bug without reading this file,
-the test will start failing for real, which is Jest telling them: *something changed, go check
-if `test.failing` should be removed.* The test is the executable version of "Known Gaps" in the
-HLD doc — it can't go stale silently the way a markdown bullet point can.
+**Why import `eventBus` and `EVENTS` here, when `user.service.test.js` doesn't?** Because we're
+about to test something `user.service.test.js` never covers: that a service actually published
+the event it claims to. Keep reading.
 
-**Reproduce it:** `git show 612c72a -- server/src/__tests__/sagas/checkout-saga.test.js`, then
-`cd server && npx jest src/__tests__/sagas` — read the output closely, it says `PASS` for a test
-whose assertion is failing. That's not a contradiction once you understand `test.failing`.
+**1b. `create` — happy path, then the event it should publish.**
 
-**Try it yourself:** Comment out the `.failing` and change it to a plain `it(...)`. Run the test
-again — now it fails for real (red), because the underlying bug is still there. Put `.failing`
-back before continuing.
+```js
+describe('create', () => {
+  it('creates a product and returns it', async () => {
+    const product = await productService.create({
+      name: 'Mechanical Keyboard',
+      price: 129.99,
+      sku: 'KB-001',
+      category: 'Electronics',
+    });
+    expect(product.name).toBe('Mechanical Keyboard');
+    expect(product.isActive).toBe(true);
+  });
 
-## Step 5 — Fix the gap, then delete the safety net
+  it('publishes ProductCreated with the new product id', async () => {
+    const publishSpy = jest.spyOn(eventBus, 'publish');
 
-**What we did, in `payment.service.js` and `inventory.events.js`:**
+    const product = await productService.create({
+      name: 'Mechanical Keyboard',
+      price: 129.99,
+      sku: 'KB-001',
+      category: 'Electronics',
+    });
 
-1. `payment.events.js`'s `StockReserved` subscriber now also destructures `items` and passes
-   them into `paymentService.initiate(...)`.
-2. `payment.service.js`'s `initiate()` accepts `items` and includes them in the
-   `PaymentFailed` event payload (it previously published `{ paymentId, orderId, userId }` —
-   no `items`, so nothing downstream could know what to release).
-3. `inventory.events.js` gained one new subscriber:
-   ```js
-   eventBus.subscribe(EVENTS.PAYMENT_FAILED, async ({ items }) => {
-     if (items?.length) await inventoryService.release(items);
-   });
-   ```
-4. Removed `.failing` from the Step 4 test — it now passes for real.
+    expect(publishSpy).toHaveBeenCalledWith(EVENTS.PRODUCT_CREATED, {
+      productId: product._id.toString(),
+      name: 'Mechanical Keyboard',
+      price: 129.99,
+    });
 
-**Why thread `items` through three files instead of querying the Order from Inventory:**
-We could have made the `PaymentFailed` handler do `Order.findById(orderId)` to fetch the items
-itself. We didn't, because `ADR-0001` explicitly forbids cross-module model imports — Inventory
-is not allowed to know about Order's Mongoose schema. The event payload has to carry everything
-a subscriber needs. This is the real cost of the modular-monolith rule: it pushes you toward
-fatter events instead of convenient queries, on purpose, because in Phase 2 those subscribers
-become separate Lambda functions that *can't* reach across into another service's table.
+    publishSpy.mockRestore();
+  });
+});
+```
 
-**Reproduce it:** `git show f3e3ff9`
+**Why `jest.spyOn` instead of, say, subscribing a fake listener:** `eventBus` is a real
+`EventEmitter` singleton. Spying on its `publish` method lets you assert *exactly* what was
+published without actually triggering every other module's subscribers (which would pull
+`order`, `inventory`, etc. into what's supposed to be a Product-only test). Always
+`mockRestore()` afterward — an un-restored spy on a shared singleton leaks into the next test
+file that imports the same `eventBus` module instance.
 
-## Step 6 — Update the diagram to match the fix
+**1c. `findAll` — filters and pagination math.**
 
-**What we did:** Edited `docs/hld/checkout-saga-flow.md` — added the `Inventory` arrow to the
-`PaymentFailed` `par` block, updated the Event Catalog table's subscriber list, and moved the
-gap from "Known Gaps" to a "Fixed" section with a one-line explanation of *how* it was fixed
-(not just "done").
+```js
+describe('findAll', () => {
+  beforeEach(async () => {
+    await Product.create([
+      { name: 'Keyboard', price: 100, sku: 'A1', category: 'Electronics' },
+      { name: 'Mouse', price: 50, sku: 'A2', category: 'Electronics' },
+      { name: 'Desk', price: 300, sku: 'A3', category: 'Furniture' },
+    ]);
+  });
 
-**Why:** A diagram that isn't updated in the same change as the code is already lying. Treat
-`docs/hld/*.md` like a file that ships in the same commit as the code it describes — not a
-separate documentation task for later.
+  it('filters by category', async () => {
+    const result = await productService.findAll({ category: 'Furniture' });
+    expect(result.products).toHaveLength(1);
+    expect(result.products[0].name).toBe('Desk');
+  });
 
-## Step 7 — Repeat the pattern for two more gaps
+  it('filters by price range', async () => {
+    const result = await productService.findAll({ minPrice: 80, maxPrice: 200 });
+    expect(result.products).toHaveLength(1);
+    expect(result.products[0].name).toBe('Keyboard');
+  });
 
-Tracing the diagram in Step 2 surfaced two more real bugs while writing it:
+  it('paginates and reports totalPages', async () => {
+    const result = await productService.findAll({ page: 1, limit: 2 });
+    expect(result.products).toHaveLength(2);
+    expect(result.total).toBe(3);
+    expect(result.totalPages).toBe(2);
+  });
+});
+```
 
-- **Gap #2:** `inventoryService.reserve(items)` reserves a multi-item order one item at a time.
-  If item 3 of 5 fails (insufficient stock), items 1–2 are already reserved in the database —
-  but the failure handler published the *original full 5-item list* on `OrderCancelled`, and
-  Inventory's own `OrderCancelled` subscriber released all 5, including the 3 that were never
-  actually reserved. That's a phantom stock credit — `reserved` could go negative.
-- **Gap #3:** The `PaymentAuthorised` handler was a stub: `console.log('Committing stock...')`
-  and nothing else. `inventoryService.commit(items)` already existed (it deducts `quantity` and
-  clears `reserved`) — it was just never called.
+**Why test pagination math (`total`, `totalPages`) and not just the returned array:** the array
+length only proves `limit` works. `total` and `totalPages` are computed from a *separate*
+`countDocuments` query in `product.service.js` — it's easy to get that query's filter out of
+sync with the main query's filter (e.g. someone adds a new filter field to one and forgets the
+other). Asserting on the computed numbers, not just the page contents, is what would catch that.
 
-**The fixes (`git show 5f769ca`):**
+**1d. `findById` — the 404 path.**
 
-- `inventoryService.reserve()` now tracks `reservedSoFar` and releases exactly that subset if a
-  later item throws, *before* re-throwing — it's now self-compensating, so by the time the
-  caller's `catch` block runs, nothing is left reserved for this attempt.
-- The reservation-failure path's `OrderCancelled` publish no longer includes `items` at all.
-  Combined with the self-compensation above, this means: `items` present on `OrderCancelled` now
-  *only* ever means "this is a real, fully-reserved order being cancelled by the user" — the
-  ambiguity that caused gap #2 is gone because the two cases are now distinguishable by the
-  event payload itself, with no new flag needed.
-- `payment.service.js` includes `items` in `PaymentAuthorised` too (mirroring Step 5's fix for
-  `PaymentFailed`), and the stub handler became one real line:
-  `if (items?.length) await inventoryService.commit(items);`
+```js
+describe('findById', () => {
+  it('throws 404 for a well-formed id that does not exist', async () => {
+    const missingId = new mongoose.Types.ObjectId();
+    await expect(productService.findById(missingId)).rejects.toMatchObject({ status: 404 });
+  });
+});
+```
 
-**Why this is the same pattern as Step 4–5, twice:** Notice the shape repeats — find the gap by
-drawing the diagram honestly, write a test asserting the correct end state, watch it fail, fix
-the minimum code to make it pass, update the doc. That loop is the actual skill this session is
-teaching, more than any specific bug.
+**1e. `update` — a gotcha about IDs you should see for yourself.**
 
-**Try it yourself:** Read the two new `describe` blocks added to `checkout-saga.test.js` in this
-commit. For the reservation-failure test, try changing product B's stock from 2 to 10 (so both
-items *can* be reserved) and predict what the order status and both `reserved` values should be
-before running the test — then run it and check your prediction.
+Write this first attempt exactly as shown, run it, and read the failure before reading further:
+
+```js
+describe('update', () => {
+  it('publishes PriceUpdated only when price actually changes', async () => {
+    const product = await productService.create({
+      name: 'Keyboard', price: 100, sku: 'A1', category: 'Electronics',
+    });
+    const publishSpy = jest.spyOn(eventBus, 'publish');
+
+    await productService.update(product._id, { name: 'Mechanical Keyboard' });
+    expect(publishSpy).not.toHaveBeenCalledWith(EVENTS.PRICE_UPDATED, expect.anything());
+
+    await productService.update(product._id, { price: 120 });
+    expect(publishSpy).toHaveBeenCalledWith(EVENTS.PRICE_UPDATED, {
+      productId: product._id.toString(),
+      newPrice: 120,
+    });
+
+    publishSpy.mockRestore();
+  });
+});
+```
+
+This fails. Look at `product.service.js`'s `update` function:
+`eventBus.publish(EVENTS.PRICE_UPDATED, { productId: id, newPrice: data.price })` — it publishes
+whatever `id` it was *given*, with no `.toString()`. Compare with `create()`, which does
+`productId: product._id.toString()`. In real usage this never matters, because the controller
+always calls `update(req.params.id, ...)` — and Express route params are always strings. We
+broke the implicit contract by calling `update()` directly with a raw Mongoose `ObjectId`
+instead of a string, the way the controller would.
+
+**The fix is in the test, not the code** — make the test call `update()` the same way its real
+caller does:
+
+```js
+    const id = product._id.toString(); // update() trusts its caller already has a string id —
+                                        // pass a raw ObjectId and PRICE_UPDATED won't match,
+                                        // since update() doesn't re-stringify it.
+
+    await productService.update(id, { name: 'Mechanical Keyboard' });
+    expect(publishSpy).not.toHaveBeenCalledWith(EVENTS.PRICE_UPDATED, expect.anything());
+
+    await productService.update(id, { price: 120 });
+    expect(publishSpy).toHaveBeenCalledWith(EVENTS.PRICE_UPDATED, { productId: id, newPrice: 120 });
+```
+
+**Why this is worth the detour:** unit-testing a service directly, bypassing its controller, is
+normal and good — but it means *you* are now responsible for upholding whatever contract the
+controller used to uphold for free. Skipping this would have shipped a test that passes for the
+wrong reason (or, with the original ObjectId call, a test that fails and tempts you to "fix" the
+working production code instead of your unrealistic test call).
+
+**1f. `remove` — confirm it's a soft delete.**
+
+```js
+describe('remove', () => {
+  it('soft-deletes — isActive becomes false, document still exists', async () => {
+    const product = await productService.create({
+      name: 'Keyboard', price: 100, sku: 'A1', category: 'Electronics',
+    });
+
+    await productService.remove(product._id);
+
+    const stillThere = await Product.findById(product._id);
+    expect(stillThere).not.toBeNull();
+    expect(stillThere.isActive).toBe(false);
+  });
+});
+```
+
+Asserting `stillThere).not.toBeNull()` is the point of this test — a naive implementation
+mistake (calling `findByIdAndDelete` instead of setting `isActive: false`) would still make
+`isActive` checks meaningless because there'd be nothing left to check.
+
+Run `npx jest src/modules/product` now. You should see 7 passing tests.
+
+## Step 2 — Worked example: integration-test the Product API with Supertest
+
+Unit tests call the service directly. Integration tests go through HTTP, exercising the
+middleware chain (`authenticate` → `authorize('admin')` → `validate(schema)` → controller) —
+which is where most real bugs in a REST API actually live.
+
+Create `server/src/modules/product/__tests__/product.api.test.js`:
+
+```js
+const mongoose = require('mongoose');
+const { MongoMemoryServer } = require('mongodb-memory-server');
+const request = require('supertest');
+const jwt = require('jsonwebtoken');
+const app = require('../../../app');
+const env = require('../../../shared/config/env');
+const Product = require('../product.model');
+
+let mongod;
+
+const signToken = (role) =>
+  jwt.sign({ sub: new mongoose.Types.ObjectId().toString(), role }, env.JWT_SECRET, {
+    expiresIn: '15m',
+  });
+
+beforeAll(async () => {
+  mongod = await MongoMemoryServer.create();
+  await mongoose.connect(mongod.getUri());
+});
+
+afterAll(async () => {
+  await mongoose.disconnect();
+  await mongod.stop();
+});
+
+beforeEach(async () => {
+  await Product.deleteMany({});
+});
+
+describe('GET /api/v1/products', () => {
+  it('returns the paginated list shape', async () => {
+    await Product.create({ name: 'Keyboard', price: 100, sku: 'A1', category: 'Electronics' });
+
+    const res = await request(app).get('/api/v1/products');
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.products).toHaveLength(1);
+  });
+});
+
+describe('POST /api/v1/products', () => {
+  const payload = { name: 'Keyboard', price: 100, sku: 'A1', category: 'Electronics' };
+
+  it('rejects with 401 when no token is sent', async () => {
+    const res = await request(app).post('/api/v1/products').send(payload);
+    expect(res.status).toBe(401);
+  });
+
+  it('rejects with 403 for a non-admin token', async () => {
+    const res = await request(app)
+      .post('/api/v1/products')
+      .set('Authorization', `Bearer ${signToken('customer')}`)
+      .send(payload);
+    expect(res.status).toBe(403);
+  });
+
+  it('creates the product for an admin token', async () => {
+    const res = await request(app)
+      .post('/api/v1/products')
+      .set('Authorization', `Bearer ${signToken('admin')}`)
+      .send(payload);
+
+    expect(res.status).toBe(201);
+    expect(res.body.data.sku).toBe('A1');
+
+    const stored = await Product.findOne({ sku: 'A1' });
+    expect(stored).not.toBeNull();
+  });
+});
+```
+
+**Why `require('../../../app')` works without calling `.listen()`:** `app.js` ends with
+`if (require.main === module) { start(); }` — `start()` (which connects Mongo and binds the
+port) only runs when you run `node src/app.js` directly. When a test file `require`s `app.js`,
+`require.main` is the *test runner*, not `app.js`, so the guard is false — you get the
+configured Express `app` object with zero network ports involved. Supertest drives it entirely
+in-process.
+
+**Why sign a JWT by hand instead of calling `POST /users/login` first:** it's faster (no
+password hashing round-trip) and it isolates this test from the User module — if `user.service`
+breaks, you don't want every other module's auth tests breaking with it. **The trade-off:** this
+test will keep passing even if `authenticate`'s actual `jwt.verify` call or the token shape
+`user.service.js` really signs ever drifts out of sync with what you're hand-crafting here. A
+real test suite would want at least one end-to-end test elsewhere that does go through real
+login, to catch that drift. Knowing what a test *doesn't* prove is as important as knowing what
+it does.
+
+Run `npx jest src/modules/product` again — you should now see 2 suites, 10 tests total.
+
+## Step 3 — Your turn: the same pattern, five more modules
+
+Don't copy Step 1–2 verbatim — re-derive the boilerplate from `user.service.test.js` each time
+until it's automatic. For each module below, write the service-layer tests; treat the bullet
+list as your assertions to design, not code to transcribe.
+
+**`cart` (`cart.service.js`):**
+- `addItem` on a product already in the cart increments `quantity` instead of adding a second
+  line item.
+- `updateQuantity(userId, productId, 0)` removes the item from `cart.items` entirely.
+- `checkout` on an empty cart throws `{ status: 400 }`.
+- `checkout` publishes `CartCheckedOut` with the correct computed `totalAmount`, and empties
+  `cart.items` afterward — spy on `eventBus.publish` like Step 1b, then re-fetch the cart from
+  the DB to check it's empty (don't trust the in-memory object after `.save()`).
+
+**`order` (`order.service.js`):**
+- `createFromCart` creates the order with `status: 'PENDING'` and publishes `OrderPlaced`.
+- `cancel` throws `{ status: 400 }` when the order's status isn't `PENDING` or `CONFIRMED`
+  (create one directly with `Order.create({ ..., status: 'SHIPPED' })` to set up this case).
+- `cancel` publishes `OrderCancelled` with the order's `items`.
+
+**`payment` (`payment.service.js`):**
+- `initiate` is idempotent: call it twice with the same `idempotencyKey` and assert only one
+  `Payment` document exists in the DB afterward.
+- The mock gateway's `Math.random() > 0.2` branch is genuinely random — a test that runs it
+  unmocked will flake. Force each branch deterministically:
+  `jest.spyOn(Math, 'random').mockReturnValue(0.9)` forces success (`0.9 > 0.2`);
+  `mockReturnValue(0.1)` forces failure (`0.1` is not `> 0.2`). Remember to `mockRestore()`.
+- `refund` throws `{ status: 400 }` on a payment that isn't `AUTHORISED`.
+
+**`inventory` (`inventory.service.js`):**
+- `reserve` throws `{ status: 400 }` when requested quantity exceeds `quantity - reserved`.
+- `commit` decrements both `quantity` and `reserved` by the committed amount.
+- `release` decrements `reserved` (but not `quantity`) by the released amount.
+- Bonus, if you want a preview of Session 15: try a multi-item `reserve()` call where the
+  *second* item has insufficient stock, and check whether the *first* item's `reserved` value
+  goes back to what it was before the call. Whatever you find, you'll want to remember it.
+
+**`notification` (`notification.service.js`):**
+- `create` persists a `Notification` with `status: 'SENT'` and a `sentAt` timestamp set.
+
+## Step 4 — Run coverage, and read it like a map
+
+```bash
+npm run test:coverage
+```
+
+Find the file with the lowest `% Funcs` or `% Branches` — not the lowest `% Lines`. A function
+that's called once with one happy-path input can show 100% line coverage while testing almost
+nothing about its actual behavior (error branches, edge cases). Coverage percentage is a map of
+*where you haven't looked yet*, not a score to maximize — a file at 60% with the right 60%
+tested can be more trustworthy than one at 95% that never exercises its error paths.
 
 ## Recap
 
-| Step | Artifact | Commit |
-|---|---|---|
-| Diagram + ADR + gap-proving test | `docs/hld/checkout-saga-flow.md`, `docs/adr/ADR-0001-*.md`, `checkout-saga.test.js` | `612c72a` |
-| Fix gap #1 (PaymentFailed → release) | `payment.service.js`, `payment.events.js`, `inventory.events.js` | `f3e3ff9` |
-| Fix gaps #2 & #3 (self-compensating reserve, real commit) | `inventory.service.js`, `inventory.events.js`, `payment.service.js` | `5f769ca` |
+| Module | What you wrote |
+|---|---|
+| `product` | Full worked example: unit tests (CRUD + event spies) + Supertest integration tests |
+| `cart`, `order`, `payment`, `inventory`, `notification` | Unit tests you designed from the bullet lists in Step 3 |
 
-Run `npm test` from `server/` now — all suites should be green, including the saga tests, with
-no `test.failing` markers left anywhere in the codebase (`grep -r "test.failing" server/src`
-should return nothing).
+Run `npm test` from `server/` — you should now have 7 test files instead of 1, and every module
+in the system has real coverage for the first time.
 
 ## What's Next
 
-One gap remains, deliberately not fixed in this session: **no durability.** Every event in this
-saga lives only in the Node.js `EventEmitter`'s memory — if the server process crashes between
-`OrderPlaced` and `StockReserved`, that event is gone forever, with no retry and no replay.
-Phase 1's Java services solve this with a *transactional outbox* (write the event to the same
-database, in the same transaction, as the state change; a relay process polls and publishes it
-later). Doing the same thing correctly in MongoDB needs a real decision first — this repo's local
-MongoDB currently runs as a single standalone node, and Mongo's multi-document transactions
-require a replica set. That decision (and its trade-offs) is the next session's topic, not this
-one.
+Session 11 (Docker) is next in the core curriculum. Once you've finished Sessions 1–14, there's
+an optional advanced capstone, Session 15, that flips this session's approach around: instead of
+writing new tests for code you just wrote, you audit *existing* code, prove a bug with a failing
+test before fixing it, and hardening a saga that already has a subtle compensation bug hiding in
+it. The "bonus" bullet under `inventory` above is a preview of exactly that bug.

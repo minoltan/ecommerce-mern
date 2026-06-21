@@ -576,6 +576,38 @@ Complete the full flow in the browser:
 
 ---
 
+## Session 15 — Saga Hardening Lab (Advanced Capstone, 1.5 hours)
+
+### Learning Goals
+- Practice auditing an existing codebase instead of writing one from scratch — the skill that
+  matters once you're maintaining a system rather than greenfielding it
+- Use a diagram as a tool for *finding* design problems, not just documenting a finished one
+- Prove a bug exists with a failing test before fixing it, using Jest's `test.failing`
+- Recognize when an event's payload is being asked to mean two different things at once
+
+### Topics
+1. Tracing real event-handler wiring instead of trusting a README's simplified description
+2. Drawing the actual choreography saga as a Mermaid sequence diagram, including failure
+   branches, and using the act of drawing it to surface gaps
+3. Writing an ADR for an architectural decision that was already made, to make the reasoning
+   durable
+4. `test.failing`: documenting a known gap as an executable spec instead of a comment
+5. Compensating actions in a choreography saga — what happens to a partial reservation when a
+   later step fails, and why the event payload itself (not a new flag) can resolve ambiguity
+
+### Hands-On Exercise
+Follow `docs/sessions/session-15-handson.md` — it's written as a step-by-step build log
+referencing the real commits in this repo's history (`git show <hash>` at each step), with the
+reasoning behind each one and a few "try it yourself" checks along the way.
+
+### Architecture Discussion
+Compare with Phase 1: this lab's `OrderCancelled` ambiguity (gap #2) is the MongoDB/EventEmitter
+version of a problem Phase 1 solves with a dedicated `order_saga_state` table
+(`ADR-0014-saga-join-state-tracking.md` in `ecommerce-platform`) — tracking saga progress
+explicitly instead of inferring it from which fields happen to be present on an event.
+
+---
+
 ## Course Summary
 
 | Session | Topic | Hours |
@@ -593,10 +625,14 @@ Complete the full flow in the browser:
 | 11 | Docker | 0.5 |
 | 12–13 | React Frontend | 2.5 |
 | 14 | Microservices Migration | 2.0 |
-| **Total** | | **24.0** |
+| 15 (optional) | Saga Hardening Lab — Advanced Capstone | 1.5 |
+| **Total (core 1–14)** | | **24.0** |
 
-> The curriculum is slightly over 20 hours to allow flexibility — skip Session 11 (Docker) or
-> compress Sessions 12–13 if time is tight. Sessions 1–10 cover the complete backend.
+> The core curriculum (Sessions 1–14) is slightly over 20 hours to allow flexibility — skip
+> Session 11 (Docker) or compress Sessions 12–13 if time is tight. Sessions 1–10 cover the
+> complete backend. Session 15 is an optional advanced capstone for students who want practice
+> auditing and hardening an existing system rather than building a new one — it assumes all of
+> Sessions 1–14 are done.
 
 ---
 
