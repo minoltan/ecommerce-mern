@@ -1,6 +1,6 @@
-const mongoose = require('mongoose');
+import mongoose from 'mongoose';
 
-const ORDER_STATES = [
+export const ORDER_STATES = [
   'PENDING',
   'CONFIRMED',
   'PAYMENT_PENDING',
@@ -41,5 +41,4 @@ const orderSchema = new mongoose.Schema(
 
 orderSchema.index({ userId: 1, createdAt: -1 });
 
-module.exports = mongoose.model('Order', orderSchema);
-module.exports.ORDER_STATES = ORDER_STATES;
+export default mongoose.model('Order', orderSchema);

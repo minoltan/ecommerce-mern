@@ -394,7 +394,7 @@ Here we implement transitions manually. When does Spring State Machine win?
    - All creation is event-driven
 
 2. **Event Handler Registration**
-   - `registerHandlers()` called once at startup in `app.js`
+   - `registerHandlers()` called once at startup in `server.js`
    - Adding a new handler = adding `eventBus.subscribe(...)` in the events file
    - Open/Closed Principle: extend without modifying existing handlers
 

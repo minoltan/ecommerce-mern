@@ -1,6 +1,6 @@
-const { Router } = require('express');
-const { refund } = require('./payment.controller');
-const { authenticate } = require('../../shared/middleware/auth.middleware');
+import { Router } from 'express';
+import { refund } from './payment.controller.js';
+import { authenticate } from '../../shared/middleware/auth.middleware.js';
 
 const router = Router();
 
@@ -55,4 +55,4 @@ router.use(authenticate);
  */
 router.post('/:id/refund', refund);
 
-module.exports = router;
+export default router;

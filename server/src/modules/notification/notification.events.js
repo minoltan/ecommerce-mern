@@ -1,6 +1,6 @@
-const eventBus = require('../../shared/events/eventBus');
-const EVENTS = require('../../shared/events/events');
-const notificationService = require('./notification.service');
+import eventBus from '../../shared/events/eventBus.js';
+import EVENTS from '../../shared/events/events.js';
+import * as notificationService from './notification.service.js';
 
 const registerHandlers = () => {
   eventBus.subscribe(EVENTS.USER_REGISTERED, async ({ userId, email, name }) => {
@@ -39,4 +39,4 @@ const registerHandlers = () => {
   });
 };
 
-module.exports = { registerHandlers };
+export { registerHandlers };

@@ -1,8 +1,8 @@
-const { Router } = require('express');
-const { getCart, addItem, updateQuantity, removeItem, checkout } = require('./cart.controller');
-const { authenticate } = require('../../shared/middleware/auth.middleware');
-const { validate } = require('../../shared/middleware/validate.middleware');
-const { addItemSchema, updateQuantitySchema, checkoutSchema } = require('./cart.schema');
+import { Router } from 'express';
+import { getCart, addItem, updateQuantity, removeItem, checkout } from './cart.controller.js';
+import { authenticate } from '../../shared/middleware/auth.middleware.js';
+import { validate } from '../../shared/middleware/validate.middleware.js';
+import { addItemSchema, updateQuantitySchema, checkoutSchema } from './cart.schema.js';
 
 const router = Router();
 
@@ -198,4 +198,4 @@ router.delete('/items/:productId', removeItem);
  */
 router.post('/checkout', validate(checkoutSchema), checkout);
 
-module.exports = router;
+export default router;

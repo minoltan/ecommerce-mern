@@ -1,26 +1,19 @@
-const express = require('express');
-const cors = require('cors');
-const morgan = require('morgan');
-const swaggerUi = require('swagger-ui-express');
-const swaggerSpec = require('./shared/config/swagger');
-const { connect } = require('./shared/config/db');
-const env = require('./shared/config/env');
-const errorMiddleware = require('./shared/middleware/error.middleware');
+import express from 'express';
+import cors from 'cors';
+import morgan from 'morgan';
+import swaggerUi from 'swagger-ui-express';
+import swaggerSpec from './shared/config/swagger.js';
+import env from './shared/config/env.js';
+import errorMiddleware from './shared/middleware/error.middleware.js';
 
 // Route modules
-const userRoutes = require('./modules/user/user.routes');
-const productRoutes = require('./modules/product/product.routes');
-const cartRoutes = require('./modules/cart/cart.routes');
-const orderRoutes = require('./modules/order/order.routes');
-const paymentRoutes = require('./modules/payment/payment.routes');
-const inventoryRoutes = require('./modules/inventory/inventory.routes');
-const notificationRoutes = require('./modules/notification/notification.routes');
-
-// Domain event handlers
-const { registerHandlers: registerOrderHandlers } = require('./modules/order/order.events');
-const { registerHandlers: registerInventoryHandlers } = require('./modules/inventory/inventory.events');
-const { registerHandlers: registerPaymentHandlers } = require('./modules/payment/payment.events');
-const { registerHandlers: registerNotificationHandlers } = require('./modules/notification/notification.events');
+import userRoutes from './modules/user/user.routes.js';
+import productRoutes from './modules/product/product.routes.js';
+import cartRoutes from './modules/cart/cart.routes.js';
+import orderRoutes from './modules/order/order.routes.js';
+import paymentRoutes from './modules/payment/payment.routes.js';
+import inventoryRoutes from './modules/inventory/inventory.routes.js';
+import notificationRoutes from './modules/notification/notification.routes.js';
 
 const app = express();
 
@@ -41,18 +34,4 @@ app.use('/api/v1/notifications', notificationRoutes);
 
 app.use(errorMiddleware);
 
-const start = async () => {
-  registerOrderHandlers();
-  registerInventoryHandlers();
-  registerPaymentHandlers();
-  registerNotificationHandlers();
-
-  await connect();
-  app.listen(env.PORT, () => console.log(`Server running on port ${env.PORT} [${env.NODE_ENV}]`));
-};
-
-if (require.main === module) {
-  start();
-}
-
-module.exports = app;
+export default app;

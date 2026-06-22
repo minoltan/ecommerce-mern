@@ -1,8 +1,8 @@
-const Cart = require('./cart.model');
-const Product = require('../product/product.model');
-const eventBus = require('../../shared/events/eventBus');
-const EVENTS = require('../../shared/events/events');
-const AppError = require('../../shared/utils/AppError');
+import Cart from './cart.model.js';
+import Product from '../product/product.model.js';
+import eventBus from '../../shared/events/eventBus.js';
+import EVENTS from '../../shared/events/events.js';
+import AppError from '../../shared/utils/AppError.js';
 
 const getCart = async (userId) => {
   const cart = await Cart.findOne({ userId }).lean();
@@ -78,4 +78,4 @@ const checkout = async (userId, { shippingAddress }) => {
   return { message: 'Checkout initiated', totalAmount };
 };
 
-module.exports = { getCart, addItem, updateQuantity, removeItem, checkout };
+export { getCart, addItem, updateQuantity, removeItem, checkout };

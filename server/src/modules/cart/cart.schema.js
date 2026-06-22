@@ -1,4 +1,4 @@
-const { z } = require('zod');
+import { z } from 'zod';
 
 const addItemSchema = z.object({
   productId: z.string().min(1),
@@ -19,4 +19,4 @@ const checkoutSchema = z.object({
   }),
 });
 
-module.exports = { addItemSchema, updateQuantitySchema, checkoutSchema };
+export { addItemSchema, updateQuantitySchema, checkoutSchema };

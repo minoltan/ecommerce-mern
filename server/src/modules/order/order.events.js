@@ -1,6 +1,6 @@
-const eventBus = require('../../shared/events/eventBus');
-const EVENTS = require('../../shared/events/events');
-const orderService = require('./order.service');
+import eventBus from '../../shared/events/eventBus.js';
+import EVENTS from '../../shared/events/events.js';
+import * as orderService from './order.service.js';
 
 const registerHandlers = () => {
   eventBus.subscribe(EVENTS.CART_CHECKED_OUT, async (payload) => {
@@ -24,4 +24,4 @@ const registerHandlers = () => {
   });
 };
 
-module.exports = { registerHandlers };
+export { registerHandlers };

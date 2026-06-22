@@ -100,7 +100,7 @@ payload: { anything: "goes" }
 Mongoose adds structure on top of MongoDB's flexible documents.
 
 ```javascript
-const mongoose = require('mongoose');
+import mongoose from 'mongoose';
 
 const userSchema = new mongoose.Schema(
   {
@@ -113,7 +113,7 @@ const userSchema = new mongoose.Schema(
   { timestamps: true }   // auto-adds createdAt + updatedAt
 );
 
-module.exports = mongoose.model('User', userSchema);
+export default mongoose.model('User', userSchema);
 // collection name: 'users' (auto-pluralised + lowercased)
 ```
 

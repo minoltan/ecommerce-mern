@@ -1,4 +1,4 @@
-const { z } = require('zod');
+import { z } from 'zod';
 
 const createProductSchema = z.object({
   name: z.string().min(1).max(200),
@@ -11,4 +11,4 @@ const createProductSchema = z.object({
 
 const updateProductSchema = createProductSchema.partial();
 
-module.exports = { createProductSchema, updateProductSchema };
+export { createProductSchema, updateProductSchema };

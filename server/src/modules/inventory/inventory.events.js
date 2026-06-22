@@ -1,6 +1,6 @@
-const eventBus = require('../../shared/events/eventBus');
-const EVENTS = require('../../shared/events/events');
-const inventoryService = require('./inventory.service');
+import eventBus from '../../shared/events/eventBus.js';
+import EVENTS from '../../shared/events/events.js';
+import * as inventoryService from './inventory.service.js';
 
 const registerHandlers = () => {
   eventBus.subscribe(EVENTS.ORDER_PLACED, async ({ orderId, userId, items, totalAmount }) => {
@@ -29,4 +29,4 @@ const registerHandlers = () => {
   });
 };
 
-module.exports = { registerHandlers };
+export { registerHandlers };

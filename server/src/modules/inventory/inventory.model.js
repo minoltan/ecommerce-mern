@@ -1,4 +1,4 @@
-const mongoose = require('mongoose');
+import mongoose from 'mongoose';
 
 const inventorySchema = new mongoose.Schema(
   {
@@ -19,4 +19,4 @@ inventorySchema.virtual('available').get(function () {
   return this.quantity - this.reserved;
 });
 
-module.exports = mongoose.model('Inventory', inventorySchema);
+export default mongoose.model('Inventory', inventorySchema);

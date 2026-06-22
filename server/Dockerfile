@@ -11,4 +11,4 @@ CMD ["npm", "run", "dev"]
 FROM base AS prod
 COPY . .
 EXPOSE 3000
-CMD ["node", "src/app.js"]
+CMD ["node", "src/server.js"]

@@ -1,7 +1,7 @@
-const mongoose = require('mongoose');
-const { MongoMemoryServer } = require('mongodb-memory-server');
-const userService = require('../user.service');
-const User = require('../user.model');
+import mongoose from 'mongoose';
+import { MongoMemoryServer } from 'mongodb-memory-server';
+import * as userService from '../user.service.js';
+import User from '../user.model.js';
 
 let mongod;
 

@@ -87,7 +87,7 @@ Big Ball of Mud ──────── Modular Monolith ───────�
 ✅ order.service.js → eventBus.publish('OrderPlaced', payload)
 ✅ inventory.events.js → eventBus.subscribe('OrderPlaced', handler)
 
-❌ order.service.js → require('../inventory/inventory.model')   // NEVER
+❌ order.service.js → import Inventory from '../inventory/inventory.model.js'   // NEVER
 ```
 
 ---
@@ -98,7 +98,8 @@ Big Ball of Mud ──────── Modular Monolith ───────�
 ecommerce-mern/
 ├── server/
 │   ├── src/
-│   │   ├── app.js                     ← Express app entry point
+│   │   ├── app.js                     ← Builds the Express app (no side effects)
+│   │   ├── server.js                  ← Entry point: registers handlers, connects DB, listens
 │   │   ├── modules/                   ← One folder per bounded context
 │   │   │   ├── user/
 │   │   │   │   ├── user.model.js      ← Mongoose schema + model
@@ -154,9 +155,10 @@ ecommerce-mern/
 
 ```json
 {
+  "type": "module",                    // every .js file is an ES module: import/export, not require()
   "scripts": {
-    "start": "node src/app.js",        // production
-    "dev": "nodemon src/app.js",       // development — restarts on file change
+    "start": "node src/server.js",     // production
+    "dev": "nodemon src/server.js",    // development — restarts on file change
     "test": "jest --runInBand --forceExit"
   },
   "dependencies": {
@@ -170,6 +172,7 @@ ecommerce-mern/
     "zod": "^3.23.8"          // schema validation
   },
   "devDependencies": {
+    "@babel/preset-env": "^7.29.7",     // lets Jest run import/export syntax
     "jest": "^29.7.0",                  // test runner
     "mongodb-memory-server": "^10.0.0", // in-memory MongoDB for tests
     "nodemon": "^3.1.3",                // file watcher
@@ -182,11 +185,15 @@ ecommerce-mern/
 - `dependencies` — shipped to production, installed in Docker image
 - `devDependencies` — only on developer machines and CI (`npm ci --omit=dev` in production)
 
+**Why `"type": "module"` plus a Babel preset for tests:** Setting `"type": "module"` is what tells Node.js to treat every `.js` file as an ES module — without it, `import`/`export` syntax is a syntax error. Jest's own test runner, though, still expects to load files its own way; `@babel/preset-env` transparently transpiles `import`/`export` to the form Jest's runner understands, so the *source* you write stays pure ESM while tests still run reliably (Jest's native ESM support is still marked experimental — Babel is the well-trodden path).
+
 ---
 
 ## Step 5 — Understanding `app.js` Line by Line
 
 ```javascript
+import express from 'express';
+
 const app = express();           // create Express application
 
 app.use(cors());                 // 1. Add CORS headers to every response
@@ -218,36 +225,54 @@ Incoming Request
 Express identifies error handlers by their 4-argument signature `(err, req, res, next)`.
 It must be the last `app.use()` call so it catches errors from all routes above it.
 
-**The `require.main === module` guard:**
+**`app.js` only builds the app — it never starts anything:**
 ```javascript
-if (require.main === module) {
-  start();   // only runs when: node src/app.js
-}
-module.exports = app;  // used by tests: const request = require('supertest')(app)
+export default app;  // used by tests: import request from 'supertest'; request(app)
 ```
-This is critical for testing — importing `app` in tests does NOT start the server or connect to DB.
+That's the entire end of the file. No conditional, no `start()` call, nothing that touches the
+network or the database. Importing `app.js` anywhere — a test file, a REPL, another module — has
+zero side effects.
 
-**Event handler registration:**
+**Starting the process is a separate file, `server.js`:**
 ```javascript
-const start = async () => {
-  registerOrderHandlers();       // must happen before DB connect
-  registerInventoryHandlers();
-  registerPaymentHandlers();
-  registerNotificationHandlers();
+import app from './app.js';
+import env from './shared/config/env.js';
+import { connect } from './shared/config/db.js';
+import { registerHandlers as registerOrderHandlers } from './modules/order/order.events.js';
+// ...three more registerHandlers imports
 
-  await connect();               // connect to MongoDB
-  app.listen(env.PORT, ...);    // start accepting requests
-};
+registerOrderHandlers();       // must happen before DB connect
+registerInventoryHandlers();
+registerPaymentHandlers();
+registerNotificationHandlers();
+
+await connect();               // connect to MongoDB
+app.listen(env.PORT, () => console.log(`Server running on port ${env.PORT}`));
 ```
+`package.json`'s `start`/`dev` scripts and the `Dockerfile` all point at `src/server.js`, not
+`src/app.js`. This is critical for testing — a test file imports `app.js` and never touches
+`server.js`, so it never starts a real server or connects to a real database.
+
+**Why not the classic `require.main === module` guard?** CommonJS projects often keep `app.js`
+and the startup logic in one file, gated by `if (require.main === module) { start(); }` — "only
+run this if I was launched directly, not imported." ES modules have no `require.main`; the
+nearest equivalent compares `import.meta.url` against `process.argv[1]`. We tried that first —
+it works fine running `node src/server.js` directly, but breaks the moment a *test* imports the
+file, because Jest runs tests through Babel, and Babel's CommonJS transform doesn't know how to
+translate `import.meta` at all (there's no CJS equivalent), so it throws `SyntaxError: Cannot use
+'import.meta' outside a module` the instant any test imports a file containing it. Splitting the
+file in two sidesteps the problem entirely instead of working around it — and arguably it's
+better design regardless: `app.js` has one job (describe the app), `server.js` has one job (run
+it).
 
 ---
 
 ## Step 6 — Understanding `env.js`
 
 ```javascript
-require('dotenv').config();   // loads .env file into process.env
+import 'dotenv/config';   // loads .env file into process.env (side-effect import)
 
-module.exports = {
+export default {
   PORT: parseInt(process.env.PORT || '3000', 10),
   MONGODB_URI: process.env.MONGODB_URI || 'mongodb://localhost:27017/ecommerce',
   JWT_SECRET: process.env.JWT_SECRET || 'changeme',
@@ -266,6 +291,8 @@ module.exports = {
 ## Step 7 — Understanding `eventBus.js`
 
 ```javascript
+import EventEmitter from 'events';
+
 class EventBus extends EventEmitter {
   publish(event, payload) {
     console.log(`[EventBus] → ${event}`, JSON.stringify(payload));
@@ -283,7 +310,7 @@ class EventBus extends EventEmitter {
   }
 }
 
-module.exports = new EventBus();        // SINGLETON
+export default new EventBus();        // SINGLETON
 ```
 
 **Why it mirrors Kafka:**
@@ -295,7 +322,7 @@ module.exports = new EventBus();        // SINGLETON
 | Consumer group error isolation | `try/catch` in subscribe wrapper |
 | Topic names as strings | Constants in `events.js` |
 
-**Singleton pattern:** `module.exports = new EventBus()` — every `require('./eventBus')` returns the **exact same object** because Node.js caches modules. This is how events published in `user.service.js` are received in `notification.events.js`.
+**Singleton pattern:** `export default new EventBus()` — every `import eventBus from './eventBus.js'` resolves to the **exact same object**, because both CommonJS and ES modules cache a module by its resolved path and only ever evaluate it once. This is how events published in `user.service.js` are received in `notification.events.js`.
 
 ---
 
@@ -324,7 +351,7 @@ npm run dev
 
 **Expected output:**
 ```
-[nodemon] starting `node src/app.js`
+[nodemon] starting `node src/server.js`
 MongoDB connected: mongodb://localhost:27017/ecommerce
 Server running on port 3000 [development]
 ```
@@ -395,7 +422,7 @@ Now make any request — observe the log line. Then remove it (was just for lear
 | JSON parsing | Jackson `@RequestBody` | `express.json()` |
 | Error handling | `@ControllerAdvice` | `(err,req,res,next) =>` middleware |
 | Config | `application.properties` | `.env` + `env.js` |
-| DI container | Spring IoC | CommonJS module singletons |
+| DI container | Spring IoC | ES module singletons |
 
 **Key insight:** Express has no magic. It's just JavaScript. What Spring Boot auto-configures in hundreds of lines, Express lets you wire manually in 20 lines. This is a tradeoff — Spring Boot is more opinionated and safer for large teams; Express is more flexible and faster to prototype.
 
@@ -408,8 +435,8 @@ Now make any request — observe the log line. Then remove it (was just for lear
 | Forget `next()` in middleware | Request hangs forever, no response | Always call `next()` or `res.send()` |
 | Put `errorMiddleware` before routes | Errors not caught | Always last `app.use()` |
 | Use `process.env.X` directly | Scattered, hard to test | Always import from `env.js` |
-| Export a new EventBus per file | Events don't cross modules | `module.exports = new EventBus()` singleton |
-| Start server in test file | Port conflict, slow tests | `require.main === module` guard |
+| Export a new EventBus per file | Events don't cross modules | `export default new EventBus()` singleton |
+| Start server in test file | Port conflict, slow tests | `app.js`/`server.js` split — tests only ever import `app.js` |
 
 ---
 
@@ -420,7 +447,7 @@ Now make any request — observe the log line. Then remove it (was just for lear
 3. Express middleware pipeline = ordered list of `(req, res, next)` functions
 4. `eventBus.js` is a singleton — same instance everywhere in the process
 5. Never import across module boundaries — communicate via events only
-6. The `require.main === module` guard makes `app.js` testable without starting a real server
+6. Splitting `app.js` (build the app) from `server.js` (run it) makes `app.js` testable without starting a real server
 
 ---
 
@@ -428,7 +455,7 @@ Now make any request — observe the log line. Then remove it (was just for lear
 
 1. What does `next()` do in an Express middleware? What happens if you forget to call it?
 2. Why is `errorMiddleware` placed after all routes in `app.js`?
-3. Why does `module.exports = new EventBus()` ensure a singleton?
+3. Why does `export default new EventBus()` ensure a singleton?
 4. What is the difference between `dependencies` and `devDependencies`?
 5. Why does the server crash if MongoDB is not running? Where exactly does this happen in the code?
 6. What is the difference between a modular monolith and microservices? Name one advantage of each.

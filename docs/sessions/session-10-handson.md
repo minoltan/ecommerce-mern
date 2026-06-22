@@ -25,12 +25,12 @@ Create `server/src/modules/product/__tests__/product.service.test.js`.
 Swap `User` for `Product`:
 
 ```js
-const mongoose = require('mongoose');
-const { MongoMemoryServer } = require('mongodb-memory-server');
-const eventBus = require('../../../shared/events/eventBus');
-const EVENTS = require('../../../shared/events/events');
-const productService = require('../product.service');
-const Product = require('../product.model');
+import mongoose from 'mongoose';
+import { MongoMemoryServer } from 'mongodb-memory-server';
+import eventBus from '../../../shared/events/eventBus.js';
+import EVENTS from '../../../shared/events/events.js';
+import * as productService from '../product.service.js';
+import Product from '../product.model.js';
 
 let mongod;
 
@@ -52,6 +52,20 @@ beforeEach(async () => {
 **Why import `eventBus` and `EVENTS` here, when `user.service.test.js` doesn't?** Because we're
 about to test something `user.service.test.js` never covers: that a service actually published
 the event it claims to. Keep reading.
+
+**Why `import * as productService` instead of `import productService`:** `product.service.js`
+ends with `export { create, findAll, findById, update, remove };` — named exports, no default.
+Get this wrong under Jest (which transpiles via Babel) and you don't get an error at all —
+`productService` is silently `undefined`, and the failure only shows up later as "cannot read
+properties of undefined" wherever you call `.create()`. (Run `node src/app.js` directly instead
+of through Jest with the same mistake, and Node's real ESM loader *does* catch it immediately —
+`SyntaxError: ... does not provide an export named 'default'` — because Babel's CommonJS-style
+interop is more forgiving than native ESM's static check. Worth knowing both failure modes
+exist.) The namespace form, `import * as productService`, collects every named export into one
+object, so `productService.create()` works exactly like the old CommonJS
+`const productService = require('./product.service'); productService.create()` did. Compare
+with `Product` two lines up — `product.model.js` has a true `export default mongoose.model(...)`,
+so a plain default import is correct there.
 
 **1b. `create` — happy path, then the event it should publish.**
 
@@ -234,13 +248,13 @@ which is where most real bugs in a REST API actually live.
 Create `server/src/modules/product/__tests__/product.api.test.js`:
 
 ```js
-const mongoose = require('mongoose');
-const { MongoMemoryServer } = require('mongodb-memory-server');
-const request = require('supertest');
-const jwt = require('jsonwebtoken');
-const app = require('../../../app');
-const env = require('../../../shared/config/env');
-const Product = require('../product.model');
+import mongoose from 'mongoose';
+import { MongoMemoryServer } from 'mongodb-memory-server';
+import request from 'supertest';
+import jwt from 'jsonwebtoken';
+import app from '../../../app.js';
+import env from '../../../shared/config/env.js';
+import Product from '../product.model.js';
 
 let mongod;
 
@@ -305,12 +319,16 @@ describe('POST /api/v1/products', () => {
 });
 ```
 
-**Why `require('../../../app')` works without calling `.listen()`:** `app.js` ends with
-`if (require.main === module) { start(); }` — `start()` (which connects Mongo and binds the
-port) only runs when you run `node src/app.js` directly. When a test file `require`s `app.js`,
-`require.main` is the *test runner*, not `app.js`, so the guard is false — you get the
-configured Express `app` object with zero network ports involved. Supertest drives it entirely
-in-process.
+**Why `import app from '../../../app.js'` works without calling `.listen()`:** `app.js` only
+builds the Express app and exports it — `app.use(...)`, routes, error handler, nothing else.
+Everything with a side effect (connecting Mongo, registering event handlers, binding a port)
+lives in a separate file, `server.js`, which `app.js` never imports. So importing `app.js` from
+a test gets you a fully configured `app` object with zero network ports involved — Supertest
+drives it entirely in-process. (Earlier drafts of this app tried a single-file
+`require.main === module`-style guard ported to ESM as an `import.meta.url` check — but Jest's
+Babel transform can't translate `import.meta` at all, so any test importing that file would
+throw a `SyntaxError`. Splitting "build" from "run" into two files avoids the problem instead of
+working around it.)
 
 **Why sign a JWT by hand instead of calling `POST /users/login` first:** it's faster (no
 password hashing round-trip) and it isolates this test from the User module — if `user.service`

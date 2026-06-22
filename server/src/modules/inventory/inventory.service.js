@@ -1,7 +1,7 @@
-const Inventory = require('./inventory.model');
-const eventBus = require('../../shared/events/eventBus');
-const EVENTS = require('../../shared/events/events');
-const AppError = require('../../shared/utils/AppError');
+import Inventory from './inventory.model.js';
+import eventBus from '../../shared/events/eventBus.js';
+import EVENTS from '../../shared/events/events.js';
+import AppError from '../../shared/utils/AppError.js';
 
 const reserve = async (items) => {
   const reservedSoFar = [];
@@ -68,4 +68,4 @@ const upsert = async (productId, { quantity, lowStockThreshold }) => {
   );
 };
 
-module.exports = { reserve, release, commit, getByProduct, upsert };
+export { reserve, release, commit, getByProduct, upsert };

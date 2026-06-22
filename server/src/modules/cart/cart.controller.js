@@ -1,4 +1,4 @@
-const cartService = require('./cart.service');
+import * as cartService from './cart.service.js';
 
 const getCart = async (req, res, next) => {
   try {
@@ -45,4 +45,4 @@ const checkout = async (req, res, next) => {
   }
 };
 
-module.exports = { getCart, addItem, updateQuantity, removeItem, checkout };
+export { getCart, addItem, updateQuantity, removeItem, checkout };

@@ -1,7 +1,7 @@
-const Product = require('./product.model');
-const eventBus = require('../../shared/events/eventBus');
-const EVENTS = require('../../shared/events/events');
-const AppError = require('../../shared/utils/AppError');
+import Product from './product.model.js';
+import eventBus from '../../shared/events/eventBus.js';
+import EVENTS from '../../shared/events/events.js';
+import AppError from '../../shared/utils/AppError.js';
 
 const create = async (data) => {
   const product = await Product.create(data);
@@ -55,4 +55,4 @@ const remove = async (id) => {
   return product;
 };
 
-module.exports = { create, findAll, findById, update, remove };
+export { create, findAll, findById, update, remove };

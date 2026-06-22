@@ -1,4 +1,4 @@
-const Notification = require('./notification.model');
+import Notification from './notification.model.js';
 
 const create = async ({ userId, type, template, payload }) => {
   const notification = await Notification.create({ userId, type, template, payload });
@@ -17,4 +17,4 @@ const getByUser = async (userId) => {
   return Notification.find({ userId }).sort({ createdAt: -1 }).lean();
 };
 
-module.exports = { create, getByUser };
+export { create, getByUser };

@@ -1,4 +1,4 @@
-const notificationService = require('./notification.service');
+import * as notificationService from './notification.service.js';
 
 const list = async (req, res, next) => {
   try {
@@ -9,4 +9,4 @@ const list = async (req, res, next) => {
   }
 };
 
-module.exports = { list };
+export { list };

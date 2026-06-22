@@ -55,8 +55,8 @@ user.model.js       → Mongoose → MongoDB
 ## Step 2 — User Model (`user.model.js`)
 
 ```javascript
-const mongoose = require('mongoose');
-const bcrypt = require('bcryptjs');
+import mongoose from 'mongoose';
+import bcrypt from 'bcryptjs';
 
 const userSchema = new mongoose.Schema(
   {
@@ -81,7 +81,7 @@ userSchema.methods.comparePassword = function (candidate) {
   return bcrypt.compare(candidate, this.password);
 };
 
-module.exports = mongoose.model('User', userSchema);
+export default mongoose.model('User', userSchema);
 ```
 
 ### bcrypt deep dive
@@ -115,7 +115,7 @@ const isMatch = await bcrypt.compare('wrongpass',   hash);  // false
 ## Step 3 — Zod Validation Schemas (`user.schema.js`)
 
 ```javascript
-const { z } = require('zod');
+import { z } from 'zod';
 
 const registerSchema = z.object({
   name:     z.string().min(2).max(100),

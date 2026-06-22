@@ -1,4 +1,4 @@
-const userService = require('./user.service');
+import * as userService from './user.service.js';
 
 const register = async (req, res, next) => {
   try {
@@ -27,4 +27,4 @@ const getMe = async (req, res, next) => {
   }
 };
 
-module.exports = { register, login, getMe };
+export { register, login, getMe };

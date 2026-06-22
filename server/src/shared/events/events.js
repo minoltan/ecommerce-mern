@@ -1,4 +1,4 @@
-module.exports = {
+export default {
   USER_REGISTERED: 'UserRegistered',
   USER_LOGGED_IN: 'UserLoggedIn',
   PRODUCT_CREATED: 'ProductCreated',

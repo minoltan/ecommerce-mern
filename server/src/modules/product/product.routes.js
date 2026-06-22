@@ -1,8 +1,8 @@
-const { Router } = require('express');
-const { create, list, getOne, update, remove } = require('./product.controller');
-const { authenticate, authorize } = require('../../shared/middleware/auth.middleware');
-const { validate } = require('../../shared/middleware/validate.middleware');
-const { createProductSchema, updateProductSchema } = require('./product.schema');
+import { Router } from 'express';
+import { create, list, getOne, update, remove } from './product.controller.js';
+import { authenticate, authorize } from '../../shared/middleware/auth.middleware.js';
+import { validate } from '../../shared/middleware/validate.middleware.js';
+import { createProductSchema, updateProductSchema } from './product.schema.js';
 
 const router = Router();
 
@@ -245,4 +245,4 @@ router.put('/:id', authenticate, authorize('admin'), validate(updateProductSchem
  */
 router.delete('/:id', authenticate, authorize('admin'), remove);
 
-module.exports = router;
+export default router;

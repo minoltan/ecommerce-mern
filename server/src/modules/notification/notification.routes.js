@@ -1,6 +1,6 @@
-const { Router } = require('express');
-const { list } = require('./notification.controller');
-const { authenticate } = require('../../shared/middleware/auth.middleware');
+import { Router } from 'express';
+import { list } from './notification.controller.js';
+import { authenticate } from '../../shared/middleware/auth.middleware.js';
 
 const router = Router();
 
@@ -38,4 +38,4 @@ router.use(authenticate);
  */
 router.get('/', list);
 
-module.exports = router;
+export default router;

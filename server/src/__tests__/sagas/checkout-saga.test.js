@@ -1,15 +1,15 @@
-const mongoose = require('mongoose');
-const { MongoMemoryServer } = require('mongodb-memory-server');
+import mongoose from 'mongoose';
+import { MongoMemoryServer } from 'mongodb-memory-server';
 const { Types } = mongoose;
 
-const eventBus = require('../../shared/events/eventBus');
-const EVENTS = require('../../shared/events/events');
+import eventBus from '../../shared/events/eventBus.js';
+import EVENTS from '../../shared/events/events.js';
 
-const Order = require('../../modules/order/order.model');
-const Inventory = require('../../modules/inventory/inventory.model');
+import Order from '../../modules/order/order.model.js';
+import Inventory from '../../modules/inventory/inventory.model.js';
 
-const { registerHandlers: registerOrderHandlers } = require('../../modules/order/order.events');
-const { registerHandlers: registerInventoryHandlers } = require('../../modules/inventory/inventory.events');
+import { registerHandlers as registerOrderHandlers } from '../../modules/order/order.events.js';
+import { registerHandlers as registerInventoryHandlers } from '../../modules/inventory/inventory.events.js';
 
 let mongod;
 

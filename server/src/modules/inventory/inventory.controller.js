@@ -1,4 +1,4 @@
-const inventoryService = require('./inventory.service');
+import * as inventoryService from './inventory.service.js';
 
 const getByProduct = async (req, res, next) => {
   try {
@@ -18,4 +18,4 @@ const upsert = async (req, res, next) => {
   }
 };
 
-module.exports = { getByProduct, upsert };
+export { getByProduct, upsert };

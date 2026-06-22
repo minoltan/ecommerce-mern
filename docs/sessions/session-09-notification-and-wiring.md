@@ -1,6 +1,6 @@
 # Session 09 — Notification Module & End-to-End Wiring
 **Duration:** 1 hour  
-**Files:** `src/modules/notification/`, `src/app.js`
+**Files:** `src/modules/notification/`, `src/app.js`, `src/server.js`
 
 ---
 
@@ -141,30 +141,27 @@ Zero changes to `order.events.js`, `order.service.js`, or any other file. The mo
 
 ---
 
-## Step 4 — Application Wiring (`app.js`)
+## Step 4 — Application Wiring (`app.js` + `server.js`)
+
+`app.js` builds the Express app — middleware, routes, error handler — and exports it. Nothing
+else:
 
 ```javascript
 // 1. Import route modules
-const userRoutes        = require('./modules/user/user.routes');
-const productRoutes     = require('./modules/product/product.routes');
-const cartRoutes        = require('./modules/cart/cart.routes');
-const orderRoutes       = require('./modules/order/order.routes');
-const paymentRoutes     = require('./modules/payment/payment.routes');
-const inventoryRoutes   = require('./modules/inventory/inventory.routes');
-const notificationRoutes = require('./modules/notification/notification.routes');
+import userRoutes from './modules/user/user.routes.js';
+import productRoutes from './modules/product/product.routes.js';
+import cartRoutes from './modules/cart/cart.routes.js';
+import orderRoutes from './modules/order/order.routes.js';
+import paymentRoutes from './modules/payment/payment.routes.js';
+import inventoryRoutes from './modules/inventory/inventory.routes.js';
+import notificationRoutes from './modules/notification/notification.routes.js';
 
-// 2. Import event handler registrars
-const { registerHandlers: registerOrderHandlers }        = require('./modules/order/order.events');
-const { registerHandlers: registerInventoryHandlers }    = require('./modules/inventory/inventory.events');
-const { registerHandlers: registerPaymentHandlers }      = require('./modules/payment/payment.events');
-const { registerHandlers: registerNotificationHandlers } = require('./modules/notification/notification.events');
-
-// 3. Register middleware
+// 2. Register middleware
 app.use(cors());
 app.use(morgan('dev'));
 app.use(express.json());
 
-// 4. Mount routes
+// 3. Mount routes
 app.use('/api/v1/users',         userRoutes);
 app.use('/api/v1/products',      productRoutes);
 app.use('/api/v1/cart',          cartRoutes);
@@ -175,33 +172,48 @@ app.use('/api/v1/notifications', notificationRoutes);
 
 app.use(errorMiddleware);
 
-// 5. Startup sequence
-const start = async () => {
-  registerOrderHandlers();         // subscribe all order event handlers
-  registerInventoryHandlers();     // subscribe all inventory event handlers
-  registerPaymentHandlers();       // subscribe all payment event handlers
-  registerNotificationHandlers();  // subscribe all notification event handlers
-
-  await connect();                 // connect to MongoDB
-  app.listen(env.PORT, () => console.log(`Server running on port ${env.PORT}`));
-};
-
-if (require.main === module) {
-  start();
-}
-
-module.exports = app;   // export for tests — no `start()` called when imported
+export default app;   // no side effects — safe to import from anywhere, including tests
 ```
 
-### Why `require.main === module`?
-When Node.js runs `node app.js`, `require.main === module` is true → `start()` is called.
-When tests `require('./app')`, `require.main !== module` → `start()` is NOT called → no server listening on a port, no real MongoDB connection, no event handlers registered.
+Everything that has a *side effect* — subscribing event handlers, connecting to MongoDB,
+binding a port — lives in a separate file, `server.js`:
+
+```javascript
+import app from './app.js';
+import env from './shared/config/env.js';
+import { connect } from './shared/config/db.js';
+import { registerHandlers as registerOrderHandlers } from './modules/order/order.events.js';
+import { registerHandlers as registerInventoryHandlers } from './modules/inventory/inventory.events.js';
+import { registerHandlers as registerPaymentHandlers } from './modules/payment/payment.events.js';
+import { registerHandlers as registerNotificationHandlers } from './modules/notification/notification.events.js';
+
+registerOrderHandlers();         // subscribe all order event handlers
+registerInventoryHandlers();     // subscribe all inventory event handlers
+registerPaymentHandlers();       // subscribe all payment event handlers
+registerNotificationHandlers();  // subscribe all notification event handlers
+
+await connect();                 // connect to MongoDB
+app.listen(env.PORT, () => console.log(`Server running on port ${env.PORT}`));
+```
+
+`package.json`'s `start`/`dev` scripts and the `Dockerfile` both point at `src/server.js`.
+
+### Why two files instead of one guarded file?
+CommonJS projects commonly keep this all in one file behind `if (require.main === module) {
+start(); }` — "only run this if I'm the entry point, not if something imported me." ES modules
+have no `require.main`; the closest equivalent compares `import.meta.url` to `process.argv[1]`.
+That works for `node server.js` directly, but breaks the moment a *test* imports the file: Jest
+runs test files through Babel, and Babel's CommonJS transform has no way to translate
+`import.meta` (there's no CJS concept for it), so it throws `SyntaxError: Cannot use
+'import.meta' outside a module` for any file containing it that a test ever imports. Splitting
+"build the app" from "run the app" into two files removes the need for the guard entirely —
+`app.js` simply never has a reason to know whether it's the entry point.
 
 This is what makes the Express app testable with Supertest:
 ```javascript
 // In a test file:
-const app = require('../app');   // app is an Express instance, not listening
-const request = require('supertest');
+import app from '../app.js';   // app is an Express instance, not listening
+import request from 'supertest';
 request(app).get('/health').expect(200);
 ```
 
@@ -217,9 +229,12 @@ Order matters when one handler's action triggers an event that another handler m
 ### The Singleton EventBus
 `src/shared/events/eventBus.js` exports `new EventBus()` — a single instance shared across all modules:
 ```javascript
-module.exports = new EventBus();
+export default new EventBus();
 ```
-Every `require('../../shared/events/eventBus')` returns the same object (Node.js module caching). This is what allows handlers registered in `order.events.js` to receive events published from `cart.service.js` without any explicit wiring between those two files.
+Every `import eventBus from '../../shared/events/eventBus.js'` resolves to the same object — both
+CommonJS and ES modules cache a module by its resolved path and only evaluate it once. This is
+what allows handlers registered in `order.events.js` to receive events published from
+`cart.service.js` without any explicit wiring between those two files.
 
 ---
 
@@ -320,17 +335,19 @@ eventBus.subscribe(EVENTS.ORDER_CANCELLED, async ({ userId, orderId }) => {
 
 Restart the server. Cancel an order (`DELETE /api/v1/orders/:id`). Check notifications — an `order-cancelled` notification should appear. No other file was modified.
 
-### Step 4: Verify `require.main === module`
-In the Node.js REPL:
+### Step 4: Verify the `app.js` / `server.js` split
+Import `app.js` directly — nothing happens except the module loading; no MongoDB connection, no
+console output:
 ```bash
-node -e "const app = require('./src/app'); console.log(typeof app)"
-# Output: object   (Express app, no server started, no MongoDB connection)
+node -e "import('./src/app.js').then(m => console.log(typeof m.default))"
+# Output: object   (just the Express app — no server started, no MongoDB connection)
 ```
 
-vs running directly:
+vs running the real entry point:
 ```bash
-node src/app.js
-# Output: Server running on port 3000 [development]
+node src/server.js
+# Output: MongoDB connected: mongodb://localhost:27017/ecommerce
+#         Server running on port 3000 [development]
 ```
 
 ---
@@ -375,7 +392,7 @@ The bounded context boundary stays the same. Only the transport changes.
 |---|---|---|
 | Importing notification service directly in order module | Tight coupling — violates module boundary | Order module only publishes events; notification subscribes |
 | Calling `registerHandlers()` after `connect()` | If a Kafka message arrives during startup before handlers register, it's missed | Always register handlers before connecting |
-| Calling `start()` unconditionally on require | Tests start a real server and connect to MongoDB | Guard with `if (require.main === module)` |
+| Putting startup logic (`connect()`, `app.listen()`) in `app.js` itself | Importing `app.js` in a test starts a real server and connects to MongoDB | Keep startup logic in `server.js`; `app.js` only builds and exports the app |
 | Mutating `payload` (Mixed) without `markModified` | Mongoose won't persist the change | Reassign the whole object or call `notification.markModified('payload')` |
 
 ---
@@ -384,9 +401,9 @@ The bounded context boundary stays the same. Only the transport changes.
 
 1. Pure consumer pattern: notification module only subscribes, never publishes — no module depends on it
 2. Open/Closed: adding a new notification requires only adding one `eventBus.subscribe()` in `notification.events.js`
-3. `require.main === module` separates "run as server" from "import as module" — enables Supertest testing
+3. Splitting `app.js` (build) from `server.js` (run) separates "run as server" from "import as module" — enables Supertest testing
 4. All `registerHandlers()` calls happen before `connect()` — handlers must be ready before the first event fires
-5. `module.exports = new EventBus()` — Node.js module cache makes this a process-wide singleton
+5. `export default new EventBus()` — module caching makes this a process-wide singleton
 6. The saga is synchronous in this implementation (EventEmitter fires inline); with Kafka it becomes truly async
 
 ---
@@ -395,7 +412,7 @@ The bounded context boundary stays the same. Only the transport changes.
 
 1. What makes the notification module a "pure consumer"? Name two properties it has that distinguish it from the other modules.
 2. How does the Open/Closed Principle apply to adding a new notification type?
-3. What is `require.main === module` doing in `app.js`? What breaks if you remove the guard?
+3. Why does `server.js` exist as a separate file from `app.js`? What would break if `app.listen()` and `connect()` moved into `app.js` itself?
 4. Why are `registerHandlers()` calls placed before `await connect()` in the startup sequence?
 5. How is the singleton EventBus instance shared across all modules without any explicit dependency injection?
 6. The HTTP response from `POST /cart/checkout` returns before the saga completes in theory, but in practice returns after. Why? How would Kafka change this?

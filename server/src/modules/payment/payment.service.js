@@ -1,8 +1,8 @@
-const { randomUUID } = require('crypto');
-const Payment = require('./payment.model');
-const eventBus = require('../../shared/events/eventBus');
-const EVENTS = require('../../shared/events/events');
-const AppError = require('../../shared/utils/AppError');
+import { randomUUID } from 'crypto';
+import Payment from './payment.model.js';
+import eventBus from '../../shared/events/eventBus.js';
+import EVENTS from '../../shared/events/events.js';
+import AppError from '../../shared/utils/AppError.js';
 
 const initiate = async ({ orderId, userId, items, amount, idempotencyKey }) => {
   const existing = await Payment.findOne({ idempotencyKey });
@@ -64,4 +64,4 @@ const refund = async (paymentId, userId) => {
   return payment;
 };
 
-module.exports = { initiate, refund };
+export { initiate, refund };

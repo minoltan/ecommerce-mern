@@ -1,4 +1,4 @@
-const EventEmitter = require('events');
+import EventEmitter from 'events';
 
 /**
  * Internal domain event bus backed by Node.js EventEmitter.
@@ -23,4 +23,4 @@ class EventBus extends EventEmitter {
   }
 }
 
-module.exports = new EventBus();
+export default new EventBus();

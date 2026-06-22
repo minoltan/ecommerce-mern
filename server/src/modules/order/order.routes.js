@@ -1,6 +1,6 @@
-const { Router } = require('express');
-const { list, getOne, cancel } = require('./order.controller');
-const { authenticate } = require('../../shared/middleware/auth.middleware');
+import { Router } from 'express';
+import { list, getOne, cancel } from './order.controller.js';
+import { authenticate } from '../../shared/middleware/auth.middleware.js';
 
 const router = Router();
 
@@ -132,4 +132,4 @@ router.get('/:id', getOne);
  */
 router.delete('/:id', cancel);
 
-module.exports = router;
+export default router;

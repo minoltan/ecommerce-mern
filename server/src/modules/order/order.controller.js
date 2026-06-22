@@ -1,4 +1,4 @@
-const orderService = require('./order.service');
+import * as orderService from './order.service.js';
 
 const list = async (req, res, next) => {
   try {
@@ -27,4 +27,4 @@ const cancel = async (req, res, next) => {
   }
 };
 
-module.exports = { list, getOne, cancel };
+export { list, getOne, cancel };

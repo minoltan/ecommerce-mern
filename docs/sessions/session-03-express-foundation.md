@@ -91,9 +91,9 @@ app.use(errorMiddleware)      → only reached if next(err) was called
 
 ```javascript
 // src/shared/config/env.js
-require('dotenv').config();    // reads .env file, adds to process.env
+import 'dotenv/config';    // reads .env file, adds to process.env
 
-module.exports = {
+export default {
   NODE_ENV: process.env.NODE_ENV || 'development',
   PORT: parseInt(process.env.PORT || '3000', 10),
   MONGODB_URI: process.env.MONGODB_URI || 'mongodb://localhost:27017/ecommerce',
@@ -152,7 +152,7 @@ const validate = (schema) => (req, res, next) => {
 ### Zod schema examples
 
 ```javascript
-const { z } = require('zod');
+import { z } from 'zod';
 
 // User registration
 const registerSchema = z.object({
@@ -281,12 +281,12 @@ class AppError extends Error {
   }
 }
 
-module.exports = AppError;
+export default AppError;
 ```
 
 **Usage in services:**
 ```javascript
-const AppError = require('../../shared/utils/AppError');
+import AppError from '../../shared/utils/AppError.js';
 
 const findById = async (id) => {
   const product = await Product.findById(id);
@@ -353,8 +353,8 @@ throw new AppError('Product not found', 404);
 
 ```javascript
 // src/shared/config/db.js
-const mongoose = require('mongoose');
-const env = require('./env');
+import mongoose from 'mongoose';
+import env from './env.js';
 
 const connect = async () => {
   await mongoose.connect(env.MONGODB_URI);
@@ -365,7 +365,7 @@ const disconnect = async () => {
   await mongoose.disconnect();
 };
 
-module.exports = { connect, disconnect };
+export { connect, disconnect };
 ```
 
 **Mongoose connection events you can hook into:**
@@ -424,14 +424,14 @@ Observe the error. Now look at `product.service.js` — `findById` calls `Produc
 Mongoose throws a CastError for invalid ObjectId format. Add handling:
 ```javascript
 // In product.service.js findById:
-const mongoose = require('mongoose');
+import mongoose from 'mongoose';
 if (!mongoose.Types.ObjectId.isValid(id)) throw new AppError('Invalid product ID', 400);
 ```
 
 ### Exercise 4: Publish and subscribe to a custom event
 In `app.js` (temporarily), after `registerNotificationHandlers()`:
 ```javascript
-const eventBus = require('./shared/events/eventBus');
+import eventBus from './shared/events/eventBus.js';
 eventBus.subscribe('TestEvent', (payload) => {
   console.log('[TEST] Received:', payload);
 });
@@ -494,4 +494,4 @@ Both achieve the same result. Spring Boot is safer for large teams (harder to ac
 4. What is the difference between HTTP 401 and HTTP 403? Give an example of each.
 5. Why should you never put sensitive data in a JWT payload?
 6. What happens if two middlewares both call `res.json()` for the same request?
-7. Why does `module.exports = new EventBus()` create a singleton?
+7. Why does `export default new EventBus()` create a singleton?

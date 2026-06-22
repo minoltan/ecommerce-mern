@@ -1,4 +1,4 @@
-const productService = require('./product.service');
+import * as productService from './product.service.js';
 
 const create = async (req, res, next) => {
   try {
@@ -45,4 +45,4 @@ const remove = async (req, res, next) => {
   }
 };
 
-module.exports = { create, list, getOne, update, remove };
+export { create, list, getOne, update, remove };

@@ -1,7 +1,7 @@
-const Order = require('./order.model');
-const eventBus = require('../../shared/events/eventBus');
-const EVENTS = require('../../shared/events/events');
-const AppError = require('../../shared/utils/AppError');
+import Order from './order.model.js';
+import eventBus from '../../shared/events/eventBus.js';
+import EVENTS from '../../shared/events/events.js';
+import AppError from '../../shared/utils/AppError.js';
 
 const createFromCart = async ({ userId, items, totalAmount, shippingAddress }) => {
   const order = await Order.create({ userId, items, totalAmount, shippingAddress, status: 'PENDING' });
@@ -56,4 +56,4 @@ const cancel = async (orderId, userId) => {
   return order;
 };
 
-module.exports = { createFromCart, transition, getByUser, getById, cancel };
+export { createFromCart, transition, getByUser, getById, cancel };

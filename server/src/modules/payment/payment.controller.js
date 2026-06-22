@@ -1,4 +1,4 @@
-const paymentService = require('./payment.service');
+import * as paymentService from './payment.service.js';
 
 const refund = async (req, res, next) => {
   try {
@@ -9,4 +9,4 @@ const refund = async (req, res, next) => {
   }
 };
 
-module.exports = { refund };
+export { refund };

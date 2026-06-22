@@ -1,9 +1,9 @@
-const jwt = require('jsonwebtoken');
-const User = require('./user.model');
-const env = require('../../shared/config/env');
-const eventBus = require('../../shared/events/eventBus');
-const EVENTS = require('../../shared/events/events');
-const AppError = require('../../shared/utils/AppError');
+import jwt from 'jsonwebtoken';
+import User from './user.model.js';
+import env from '../../shared/config/env.js';
+import eventBus from '../../shared/events/eventBus.js';
+import EVENTS from '../../shared/events/events.js';
+import AppError from '../../shared/utils/AppError.js';
 
 const register = async ({ name, email, password }) => {
   const exists = await User.findOne({ email });
@@ -46,4 +46,4 @@ const getProfile = async (userId) => {
   return user;
 };
 
-module.exports = { register, login, getProfile };
+export { register, login, getProfile };
